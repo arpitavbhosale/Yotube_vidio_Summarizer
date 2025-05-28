@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YouTube Video Summarizer</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <style>
+        #summaryText {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        /* Copy button styles */
+        .copy-button {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            background-color: #007bff; /* Blue button background color */
+            color: #fff; /* White text color */
+            border: none;
+            padding: 2px 5px; /* Adjusted padding */
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 12px; /* Adjusted font size */
+        }
+
+        .copy-button:hover {
+            background-color: #0056b3; /* Darker blue on hover */
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-5">
+        <h1 class="mb-4">YouTube Video Summarizer</h1>
+        <form id="videoForm">
+            <div class="form-group">
+                <label for="videoUrl">Enter YouTube Video URL :</label>
+                <input type="text" class="form-control" id="videoUrl" name="videoUrl" required>
+            </div>
+            <button type="submit" class="btn btn-primary">Summarize Video</button>
+        </form>
+        <div id="loading" class="mt-4" style="display: none;">
+            <div class="progress">
+                <div id="loadingBar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" aria-valuemin="0" aria-valuemax="100" style="width: 0%"></div>
+            </div>
+            <p>Loading summary...</p>
+        </div>
+        <div id="summaryResults" style="display: none; position: relative;"> <!-- Position relative to make the copy button absolute -->
+            <h2 class="mt-4">Summary</h2>
+            <div class="card">
+                <div class="card-body">
+                    <p id="summaryText"></p>
+                    <button id="copyButton" class="copy-button">Copy</button> <!-- Copy button -->
+                     <button id="makeLongButton" class="btn btn-secondary mt-2">Make Summary Short</button> <!-- Button for making summary short -->
+                    <button id="makeShortButton" class="btn btn-secondary mt-2">Make Summary Long</button> <!-- Button for making summary long -->
+                </div>
+                <ul class="list-group list-group-flush">
+                    <li class="list-group-item">Sentences in Summary: <span id="numSentencesSummary"></span></li>
+                    <li class="list-group-item">Words in Summary: <span id="numWordsSummary"></span></li>
+                </ul>
+            </div>
+        </div>
+        <div id="transcriptResults" style="display: none;">
+            <h2 class="mt-4">Original Transcript</h2>
+            <div id="transcriptText" class="card">
+                <div class="card-body">
+                </div>
+                <ul class="list-group list-group-flush">
+                    <li class="list-group-item">Sentences in Transcript: <span id="numSentencesTranscript"></span></li>
+                    <li class="list-group-item">Words in Transcript: <span id="numWordsTranscript"></span></li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+    <script>
+        $(document).ready(function () {
+            $('#videoForm').submit(function (event) {
+                event.preventDefault();
+                var videoUrl = $('#videoUrl').val();
+                $('#loading').show();
+                $('#loadingBar').css('width', '0%');
+                $('#summaryResults').hide();
+                $('#transcriptResults').hide();
+
+                $.ajax({
+                    type: 'POST',
+                    url: '/summarize_video',
+                    data: { 'video_url': videoUrl },
+                    xhr: function () {
+                        var xhr = new window.XMLHttpRequest();
+                        xhr.upload.addEventListener("progress", function (evt) {
+                            if (evt.lengthComputable) {
+                                var percentComplete = (evt.loaded / evt.total) * 100;
+                                $('#loadingBar').css('width', percentComplete + '%');
+                            }
+                        }, false);
+                        return xhr;
+                    },
+                    success: function (response) {
+                        $('#loadingBar').css('width', '100%'); // Set loading bar to 100% when summary is displayed
+                        $('#loading').hide();
+                        $('#summaryResults').show();
+                        $('#transcriptResults').show();
+                        $('#summaryText').text(response.summary.join('\n\n'));
+                        $('#numSentencesSummary').text(response.num_sentences_summary);
+                        $('#numWordsSummary').text(response.num_words_summary);
+                        $('#numSentencesTranscript').text(response.num_sentences_transcript);
+                        $('#numWordsTranscript').text(response.num_words_transcript);
+                        $('#transcriptText .card-body').html('<pre>' + response.transcript.map(function(entry) { return entry.text; }).join('\n') + '</pre>');
+                    },
+                    error: function (xhr) {
+                        $('#loading').hide();
+                        alert(xhr.responseJSON.error);
+                    }
+                });
+            });
+
+            // Copy button functionality
+            $('#copyButton').click(function () {
+                var summaryText = $('#summaryText').text().trim();
+                var tempElement = $('<textarea>').val(summaryText).appendTo('body').select();
+                document.execCommand('copy');
+                tempElement.remove();
+                alert('Summary copied to clipboard!');
+            });
+
+            // Event handler for the "Make Summary Short" button
+            $('#makeShortButton').click(function () {
+                $('#loading').show();
+                $('#loadingBar').css('width', '0%');
+                summarizeVideo(0.5); // For example, reduce the summary length to half
+            });
+
+            // Event handler for the "Make Summary Long" button
+            $('#makeLongButton').click(function () {
+                $('#loading').show();
+                $('#loadingBar').css('width', '0%');
+                summarizeVideo(2); // For example, double the summary length
+            });
+
+            // Function to summarize the video with a specified length factor
+            function summarizeVideo(lengthFactor) {
+                var videoUrl = $('#videoUrl').val();
+
+                $.ajax({
+                    type: 'POST',
+                    url: '/summarize_video',
+                    data: { 'video_url': videoUrl, 'length_factor': lengthFactor },
+                    xhr: function () {
+                        var xhr = new window.XMLHttpRequest();
+                        xhr.upload.addEventListener("progress", function (evt) {
+                            if (evt.lengthComputable) {
+                                var percentComplete = (evt.loaded / evt.total) * 100;
+                                $('#loadingBar').css('width', percentComplete + '%');
+                            }
+                        }, false);
+                        return xhr;
+                    },
+                    success: function (response) {
+                        $('#loadingBar').css('width', '100%'); // Set loading bar to 100% when summary is displayed
+                        $('#loading').hide();
+                        $('#summaryResults').show();
+                        $('#transcriptResults').show();
+                        $('#summaryText').text(response.summary.join('\n\n'));
+                        $('#numSentencesSummary').text(response.num_sentences_summary);
+                        $('#numWordsSummary').text(response.num_words_summary);
+                        $('#numSentencesTranscript').text(response.num_sentences_transcript);
+                        $('#numWordsTranscript').text(response.num_words_transcript);
+                        $('#transcriptText .card-body').html('<pre>' + response.transcript.map(function(entry) { return entry.text; }).join('\n') + '</pre>');
+                    },
+                    error: function (xhr) {
+                        $('#loading').hide();
+                        alert(xhr.responseJSON.error);
+                    }
+                });
+            }
+        });
+    </script>
+</body>
+</html>
